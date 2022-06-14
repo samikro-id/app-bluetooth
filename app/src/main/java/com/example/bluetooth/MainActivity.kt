@@ -2,8 +2,10 @@ package com.example.bluetooth
 
 import android.Manifest
 import android.Manifest.permission
+import android.app.Activity
 import android.app.AlertDialog
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.DialogInterface
@@ -11,21 +13,26 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-
+import java.lang.Exception
 
 class MainActivity : AppCompatActivity() {
     private var bluetoothManager: BluetoothManager? = null
     private var bluetoothAdapter: BluetoothAdapter? = null
-    val REQUEST_ENABLE_BT = 1;
+    private val REQUEST_ENABLE_BT = 1
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        Log.i(javaClass.simpleName, "Android ${Build.VERSION.SDK_INT}");
 
         if(bluetoothManager == null){
             bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
@@ -59,11 +66,19 @@ class MainActivity : AppCompatActivity() {
                         showExplanation(
                             "Permission Needed",
                             "Rationale",
-                            permission.BLUETOOTH,
+                            arrayOf(
+                                permission.BLUETOOTH,
+                                permission.BLUETOOTH_CONNECT,
+                                permission.BLUETOOTH_ADMIN
+                            ),
                             REQUEST_ENABLE_BT
                         )
                     } else {
-                        requestPermission(permission.BLUETOOTH, REQUEST_ENABLE_BT)
+                        requestPermissionMulti(arrayOf(
+                                                    permission.BLUETOOTH,
+                                                    permission.BLUETOOTH_CONNECT,
+                                                    permission.BLUETOOTH_ADMIN
+                                                ), REQUEST_ENABLE_BT)
                     }
                     return
                 }
@@ -72,7 +87,7 @@ class MainActivity : AppCompatActivity() {
                     if (!bluetoothAdapter!!.isEnabled) {
                         Log.i(javaClass.simpleName, "Bluetooth is off")
                         val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
-                        startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT)
+                        resultEnableBt.launch(enableBtIntent)
                     }
                 }
             }
@@ -80,14 +95,45 @@ class MainActivity : AppCompatActivity() {
                 if (!bluetoothAdapter!!.isEnabled) {
                     Log.i(javaClass.simpleName, "Bluetooth is off")
                     val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
-                    startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT)
+                    resultEnableBt.launch(enableBtIntent)
+                }
+                else{
+                    try{
+                        val pairedDevices: Set<BluetoothDevice>? = bluetoothAdapter!!.bondedDevices
+
+                        pairedDevices?.forEach{ device->
+                            Log.i(javaClass.simpleName, "${device.name} : ${device.address}")
+                        }
+                    }
+                    catch (err: Exception){
+                        Log.e(javaClass.simpleName, err.message!!)
+                    }
                 }
             }
         }
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>,
-                                            grantResults: IntArray) {
+    private val resultEnableBt = registerForActivityResult(ActivityResultContracts.StartActivityForResult()){ result->
+        if(result.resultCode == Activity.RESULT_OK){
+            try{
+                val pairedDevices: Set<BluetoothDevice>? = bluetoothAdapter!!.bondedDevices
+
+                pairedDevices?.forEach{ device->
+                    Log.i(javaClass.simpleName, "${device.name} : ${device.address}")
+                }
+            }
+            catch (err: Exception){
+                Log.e(javaClass.simpleName, err.message!!)
+            }
+
+        }
+        else{
+            Toast.makeText(this, "Deny Enable BT", Toast.LENGTH_SHORT).show()
+            appExit();
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>,  grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         when (requestCode) {
             REQUEST_ENABLE_BT -> {
@@ -109,7 +155,7 @@ class MainActivity : AppCompatActivity() {
     private fun showExplanation(
         title: String,
         message: String,
-        permission: String,
+        permission: Array<String>,
         permissionRequestCode: Int
     ) {
         val builder: AlertDialog.Builder = AlertDialog.Builder(this)
@@ -117,15 +163,19 @@ class MainActivity : AppCompatActivity() {
             .setMessage(message)
             .setPositiveButton(android.R.string.ok,
                 DialogInterface.OnClickListener { dialog, id ->
-                    requestPermission(
-                        permission,
-                        permissionRequestCode
+                    requestPermissionMulti(
+                        permission, permissionRequestCode
                     )
                 })
         builder.create().show()
     }
 
-    private fun requestPermission(permissionName: String, permissionRequestCode: Int) {
-        ActivityCompat.requestPermissions(this, arrayOf(permissionName), permissionRequestCode)
+    fun requestPermissionMulti(permissionArray: Array<String>, permissionRequestCode: Int){
+        ActivityCompat.requestPermissions(this, permissionArray, permissionRequestCode)
+    }
+    fun appExit(){
+        Handler(Looper.getMainLooper()).postDelayed({
+            finish()
+        }, 2500)
     }
 }
